@@ -6,6 +6,7 @@ const dataSource = [
 
 let allLeads = [];
 let currentIndex = 0;
+let isInitialized = false;
 
 const dom = {
     card: document.getElementById('lead-card'),
@@ -33,71 +34,78 @@ const copyIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" st
 const checkIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
 
 async function init() {
+    if (isInitialized) return;
+    isInitialized = true;
+
     try {
-        const fetchPromises = dataSource.map(file => fetch(file).then(res => {
-            if (!res.ok) throw new Error(`Failed to load ${file}: ${res.statusText}`);
+        const fetchPromises = dataSource.map(file => fetch(`./${file}`).then(res => {
+            if (!res.ok) throw new Error(`Failed to load ${file}`);
             return res.json();
         }));
-        
+
         const results = await Promise.all(fetchPromises);
-        
+
         results.forEach(arr => {
             if (Array.isArray(arr)) {
                 allLeads = allLeads.concat(arr);
             }
         });
-        
+
         if (allLeads.length === 0) {
-            throw new Error("No leads found in the source files.");
+            dom.loading.classList.add('hidden');
+            dom.error.classList.remove('hidden');
+            dom.errorMessage.textContent = 'No leads available.';
+            dom.position.textContent = "0 of 0";
+            return;
         }
-        
+
         dom.loading.classList.add('hidden');
         dom.card.classList.remove('hidden');
-        
+
         renderLead();
         setupEventListeners();
-        
+
     } catch (err) {
-        console.error(err);
+        console.error('Fetch error:', err);
         dom.loading.classList.add('hidden');
         dom.error.classList.remove('hidden');
-        dom.errorMessage.textContent = err.message || "An error occurred while loading leads.";
+        dom.errorMessage.textContent = 'Failed to load leads. Please refresh.';
         dom.position.textContent = "Error";
     }
 }
 
 function renderLead() {
     if (allLeads.length === 0) return;
-    
+
     const lead = allLeads[currentIndex];
-    
+
     // Update navigation state
     dom.prevBtn.disabled = currentIndex === 0;
     dom.nextBtn.disabled = currentIndex === allLeads.length - 1;
     dom.position.textContent = `Lead ${currentIndex + 1} of ${allLeads.length}`;
-    
+
     // Clear current card
     dom.card.innerHTML = '';
-    
+
     // Create elements
     let mainFieldsHtml = '';
     let gridFieldsHtml = '<div class="grid-fields">';
-    
+
     displayFields.forEach(field => {
         let rawValue = lead[field.source];
         let displayValue = (rawValue !== undefined && rawValue !== null && rawValue !== "") ? rawValue : "Not available";
         let isAvailable = displayValue !== "Not available";
-        
+
         let valueHtml = '';
         if (field.isLink && isAvailable) {
             valueHtml = `<a href="${displayValue}" target="_blank" rel="noopener noreferrer">${displayValue}</a>`;
         } else {
             valueHtml = displayValue;
         }
-        
+
         // Escape for literal use in onclick
         const escapedDisplayValue = String(displayValue).replace(/`/g, '\\`').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        
+
         const copyBtnHtml = (field.copyable && isAvailable) ? `
             <button class="copy-btn" onclick="copyToClipboard(this, \`${escapedDisplayValue}\`)">
                 ${copyIcon} Copy
@@ -105,7 +113,7 @@ function renderLead() {
         ` : '';
 
         const cssClass = field.isTitle ? 'field-value title' : 'field-value';
-        
+
         const fieldHtml = `
             <div class="field-group">
                 <div class="field-header">
@@ -115,18 +123,18 @@ function renderLead() {
                 <div class="${cssClass}">${valueHtml}</div>
             </div>
         `;
-        
+
         if (field.isGrid) {
             gridFieldsHtml += fieldHtml;
         } else {
             mainFieldsHtml += fieldHtml;
         }
     });
-    
+
     gridFieldsHtml += '</div>';
-    
+
     dom.card.innerHTML = mainFieldsHtml + gridFieldsHtml;
-    
+
     // Small animation effect
     dom.card.style.animation = 'none';
     dom.card.offsetHeight; // Trigger reflow
@@ -146,7 +154,7 @@ function navigate(direction) {
 function setupEventListeners() {
     dom.prevBtn.addEventListener('click', () => navigate('prev'));
     dom.nextBtn.addEventListener('click', () => navigate('next'));
-    
+
     document.addEventListener('keydown', (e) => {
         if (e.key === 'ArrowLeft') {
             navigate('prev');
@@ -156,15 +164,15 @@ function setupEventListeners() {
     });
 }
 
-window.copyToClipboard = async function(btnNode, text) {
+window.copyToClipboard = async function (btnNode, text) {
     try {
         await navigator.clipboard.writeText(text);
-        
+
         // Change button layout to copied state
         const originalHtml = btnNode.innerHTML;
         btnNode.innerHTML = `${checkIcon} Copied!`;
         btnNode.classList.add('copied');
-        
+
         setTimeout(() => {
             btnNode.innerHTML = originalHtml;
             btnNode.classList.remove('copied');
